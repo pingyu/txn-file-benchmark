@@ -163,7 +163,8 @@ func workerThread(ctx context.Context, db *sql.DB, threadIdx int) {
 	for {
 		err := doTxn()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Do transaction failed, thread %d, err %v", threadIdx, err)
+			fmt.Fprintf(os.Stderr, "Do transaction failed, thread %d, err %v\n", threadIdx, err)
+			time.Sleep(1 * time.Second)
 		}
 	}
 }
