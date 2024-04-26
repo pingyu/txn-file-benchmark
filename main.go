@@ -11,6 +11,7 @@ import (
 
 const (
 	INSERT_BATCH_ROWS = 1024
+	TIDB_MEM_QUOTA_QUERY = 16 << 30 // 16GB
 )
 
 var (

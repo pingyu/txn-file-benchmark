@@ -29,7 +29,7 @@ func insertWorkload() {
 	}
 
 	// Set variable
-	query := "SET GLOBAL tidb_mem_quota_query=0" // 0: unlimited
+	query := fmt.Sprintf("SET GLOBAL tidb_mem_quota_query=%d", TIDB_MEM_QUOTA_QUERY)
 	_, err := dbs[0].ExecContext(ctx, query)
 	if err != nil {
 		log.Fatal(err)
