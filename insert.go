@@ -15,8 +15,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func insertWorkload() {
+func insertWorkload(targetTxns int) {
 	ctx := context.Background()
+
+	startTime := time.Now()
 
 	dbs := make([]*sql.DB, 0, len(dsns))
 	for _, dsn := range dsns {
@@ -53,22 +55,24 @@ func insertWorkload() {
 	}
 
 	// Start worker threads
+	targetTxnsPerThread := targetTxns / *numThreads
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < *numThreads; i++ {
 		i := i
 		eg.Go(func() error {
 			db := dbs[i%len(dbs)]
-			workerThread(ctx, db, i)
+			workerThread(ctx, db, i, targetTxnsPerThread)
 			return nil
 		})
 	}
 	err = eg.Wait()
+	fmt.Printf("Total transactions: %v, elapsed: %v\n", totalTxns.Load(), time.Since(startTime))
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func workerThread(ctx context.Context, db *sql.DB, threadIdx int) {
+func workerThread(ctx context.Context, db *sql.DB, threadIdx int, targetTxns int) {
 	// fmt.Printf("Starting worker thread %d\n", threadIdx)
 
 	conn, err := db.Conn(context.Background())
@@ -160,11 +164,17 @@ func workerThread(ctx context.Context, db *sql.DB, threadIdx int) {
 		return nil
 	}
 
+	threadTxns := 0
 	for {
 		err := doTxn()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Do transaction failed, thread %d, err %v\n", threadIdx, err)
 			time.Sleep(1 * time.Second)
+		} else {
+			threadTxns++
+			if targetTxns > 0 && threadTxns >= targetTxns {
+				break
+			}
 		}
 	}
 }
