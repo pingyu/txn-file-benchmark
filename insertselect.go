@@ -15,11 +15,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func insertSelectWorkload() {
+func insertSelectWorkload(targetTxns int) {
 	if *action == "prepare" {
 		prepareTableForSelect()
 	} else if *action == "run" {
-		runInsertSelectWorkload()
+		runInsertSelectWorkload(targetTxns)
 	} else {
 		log.Fatal("Unknown action type: ", *action)
 	}
@@ -102,7 +102,7 @@ func prepareTableForSelect() {
 	}
 }
 
-func runInsertSelectWorkload() {
+func runInsertSelectWorkload(targetTxns int) {
 	ctx := context.Background()
 
 	dbs := make([]*sql.DB, 0, len(dsns))
@@ -139,23 +139,27 @@ func runInsertSelectWorkload() {
 		}
 	}
 
+	startTime := time.Now()
+	targetTxnsPerThread := targetTxns / *numThreads
+
 	// Start worker threads
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < *numThreads; i++ {
 		i := i
 		eg.Go(func() error {
 			db := dbs[i%len(dbs)]
-			insertSelectWorkerThread(ctx, db, i)
+			insertSelectWorkerThread(ctx, db, i, targetTxnsPerThread)
 			return nil
 		})
 	}
 	err = eg.Wait()
+	fmt.Printf("Total transactions: %v, elapsed: %v\n", totalTxns.Load(), time.Since(startTime))
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func insertSelectWorkerThread(ctx context.Context, db *sql.DB, threadIdx int) {
+func insertSelectWorkerThread(ctx context.Context, db *sql.DB, threadIdx int, targetTxns int) {
 	// fmt.Printf("Starting worker thread %d\n", threadIdx)
 
 	conn, err := db.Conn(context.Background())
@@ -231,12 +235,17 @@ func insertSelectWorkerThread(ctx context.Context, db *sql.DB, threadIdx int) {
 		return nil
 	}
 
+	threadTxns := 0
 	for {
-		// startTime := time.Now()
 		err := doTxn()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Do transaction failed, thread %d, err %v\n", threadIdx, err)
 			time.Sleep(1 * time.Second)
+		} else {
+			threadTxns++
+			if targetTxns > 0 && threadTxns >= targetTxns {
+				break
+			}
 		}
 	}
 }

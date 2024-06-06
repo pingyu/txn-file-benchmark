@@ -18,8 +18,6 @@ import (
 func insertWorkload(targetTxns int) {
 	ctx := context.Background()
 
-	startTime := time.Now()
-
 	dbs := make([]*sql.DB, 0, len(dsns))
 	for _, dsn := range dsns {
 		db, err := sql.Open("mysql", dsn)
@@ -54,8 +52,10 @@ func insertWorkload(targetTxns int) {
 		}
 	}
 
-	// Start worker threads
+	startTime := time.Now()
 	targetTxnsPerThread := targetTxns / *numThreads
+
+	// Start worker threads
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < *numThreads; i++ {
 		i := i
