@@ -1,11 +1,16 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"sync/atomic"
 
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -24,8 +29,7 @@ var (
 	useTxnFile *bool   = flag.Bool("use-txn-file", false, "use txn file")
 	workload   *string = flag.String("workload", "insert", "workload type [insert/insert-select]")
 	action     *string = flag.String("action", "", "action type [prepare/run]")
-
-	// targetTPM  *int    = flag.Int("tpm", 0, "target tpm (transactions per minute)")
+	ca         *string = flag.String("ca", "", "path to CA certificate")
 )
 
 var (
@@ -42,7 +46,6 @@ func initFlags() {
 	fmt.Printf("Number of Threads: %d\n", *numThreads)
 	fmt.Printf("Size of Transaction (MB): %d\n", *txnMB)
 	fmt.Printf("Use Txn File: %v\n", *useTxnFile)
-	// fmt.Printf("Target QPS: %d\n", *targetTPM)
 	fmt.Printf("Target Transactions: %d\n", *targetTxns)
 	fmt.Printf("Workload Type: %s\n", *workload)
 	fmt.Printf("Action Type: %s\n", *action)
@@ -51,8 +54,38 @@ func initFlags() {
 	dsns = strings.Split(*dsn, ",")
 }
 
+func registerCaCert() {
+	if len(*ca) != 0 {
+		rootCertPool := x509.NewCertPool()
+		pem, err := os.ReadFile(*ca)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
+			log.Fatal("Failed to append PEM.")
+		}
+		err = mysql.RegisterTLSConfig("custom", &tls.Config{
+			RootCAs: rootCertPool,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for i, dsn := range dsns {
+			if !strings.Contains(dsn, "tls=custom") {
+				if strings.Contains(dsn, "?") {
+					dsns[i] = dsn + "&tls=custom"
+				} else {
+					dsns[i] = dsn + "?tls=custom"
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	initFlags()
+	registerCaCert()
 
 	if *workload == "insert" {
 		insertWorkload(*targetTxns)
